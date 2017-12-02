@@ -1,0 +1,7 @@
+[package]
+name = "PolyPasswordHasher-rs"
+version = "0.1.0"
+authors = ["ex0dus-0x <ex0dus@codemuch.tech>"]
+
+[dependencies]
+ring = "0.12.1"
