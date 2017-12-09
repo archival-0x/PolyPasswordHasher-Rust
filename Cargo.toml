@@ -1,5 +1,5 @@
 [package]
-name = "PolyPasswordHasher-rs"
+name = "PolyPasswordHasher"
 version = "0.1.0"
 authors = ["ex0dus-0x <ex0dus@codemuch.tech>"]
 
