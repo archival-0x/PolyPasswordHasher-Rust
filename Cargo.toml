@@ -5,3 +5,5 @@ authors = ["ex0dus-0x <ex0dus@codemuch.tech>"]
 
 [dependencies]
 ring = "0.12.1"
+serde = "1.0.25"
+serde_json = "1.0.8"
