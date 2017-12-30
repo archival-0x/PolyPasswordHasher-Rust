@@ -16,8 +16,45 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize(){
+
+        let json = File::open("tests/accounts.json").unwrap();
+        let accounts = serde_json::from_reader::<File, AccountsWrapper>(json).unwrap();
+
+        println!("{:?}", accounts);
+    }
+
+    #[test]
+    fn test_serialize(){
+        let my_account = Accounts {
+            id: 1,
+            username: String::from("test_username"),
+            salt: String::from("abcdefghijk1234567890"),
+            sharenumber: 1,
+            passhash: String::from("testpasswordhash")
+        };
+
+        let mut account_hash: HashMap<i64, Accounts> = HashMap::new();
+
+        account_hash.insert(my_account.id, my_account);
+
+        let accounts = AccountsWrapper {
+            accounts: account_hash
+        };
+
+        // TODO: serialize to json
+
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AccountsWrapper {
+    #[serde(with = "accounts")]
     pub accounts: HashMap<i64, Accounts>,
 }
 
@@ -30,8 +67,6 @@ pub struct Accounts {
     sharenumber: u8,
     passhash: String
 }
-
-
 
 pub struct PolyPasswordHasher {
 
@@ -54,7 +89,6 @@ pub struct PolyPasswordHasher {
            ... etc.
         ]
     */
-
     accountdict: Option<AccountsWrapper>,
 
     // Set this as the ShamirSecret object we will be using
@@ -79,10 +113,6 @@ pub struct PolyPasswordHasher {
 
 impl PolyPasswordHasher {
     pub fn new(threshold: u8, passwordfile: Option<String>, partialbytes: Option<u8>) -> PolyPasswordHasher {
-
-        // Variable to hold thresholdlesskey, if available.
-        let mut thresholdlesskey: Vec<u8> = vec![];
-
         // Variable to hold ShamirSecret object
         let shamirsecretobj: ShamirSecret;
 
@@ -96,11 +126,12 @@ impl PolyPasswordHasher {
             let mut buffer = [0u8; 256];
             rand_bytes(&mut buffer).unwrap();
 
-            // Set thresholdlesskey to be equal to array as vector
-            thresholdlesskey = buffer.to_vec();
-
+            let thresholdlesskey = unsafe {
+                String::from_utf8_unchecked(buffer.to_vec())
+            };
             // Create new ShamirSecret object
-            shamirsecretobj = ShamirSecret::new(threshold, Some(String::from_utf8(thresholdlesskey.clone()).unwrap()));
+            shamirsecretobj = ShamirSecret::new(threshold,
+                Some(thresholdlesskey.to_owned()));
 
             // Return the new struct
             return PolyPasswordHasher {
@@ -110,7 +141,7 @@ impl PolyPasswordHasher {
                 knownsecret: true,
                 saltsize: 16u8,
                 partialbytes: partialbytes,
-                thresholdlesskey: Some(thresholdlesskey),
+                thresholdlesskey: Some(thresholdlesskey.into_bytes()),
                 nextavailableshare: 1
             };
 
@@ -164,7 +195,7 @@ impl PolyPasswordHasher {
             }
         }
 
-        // TODO: implement hasher if shares == 0
+        // TODO: implement hasher for thresholdless support
 
         for sharenumber in self.nextavailableshare..(self.nextavailableshare + shares) {
 
@@ -204,7 +235,7 @@ impl PolyPasswordHasher {
         self.nextavailableshare += shares;
     }
 
-    pub fn is_valid_login(&self, username: String, password: String) {
+    pub fn is_valid_login(&self, username: String, password: String) -> bool {
 
         // Borrow accountdict as its own variable binding
         let accountdict = self.accountdict.clone().unwrap();
@@ -213,57 +244,160 @@ impl PolyPasswordHasher {
             panic!("Password File is not unlocked and partial verification is disabled!");
         }
 
-        // Iterate over "dict", check if username exists
+        // Collect all usernames into a vector
+        let mut username_vec: Vec<String> = vec![];
         for (_id, account) in accountdict.accounts.iter() {
-            if account.username != username {
-                continue;
-            } else {
-                break;
-            }
+            username_vec.push(account.clone().username);
         }
 
-        for (_id, account) in accountdict.iter(){
-             let saltpass: String = format!("{}{}", entry.salt, password);
+        if !username_vec.contains(&username){
+            panic!("Unknown user {}", username);
+        }
+
+        for (_id, account) in accountdict.accounts.iter(){
+
+             let saltpass: String = format!("{}{}", account.salt, password);
 
              let saltedpasswordhash: [u8; 32] = sha256(&saltpass.as_bytes());
 
              if !self.knownsecret{
-                 // TODO: finish up!
+
+                 let saltedcheck = saltedpasswordhash[saltedpasswordhash.len() - (self.partialbytes.unwrap() as usize)];
+
+                 let entrycheck = account.clone().passhash.into_bytes()[account.clone().passhash.len()] - self.partialbytes.unwrap();
+
+                 return saltedcheck == entrycheck;
              }
+
+
+             let sharedata = do_bytearray_xor(saltedpasswordhash.to_vec(),
+                 account.clone().passhash.into_bytes()[0..(account.clone().passhash.len() - self.partialbytes.unwrap() as usize)].to_vec());
+
+              // TODO : implement thresholdless account support
+
+              let mut share: Vec<u8> = vec![account.sharenumber];
+
+              for element in sharedata.iter() {
+                  share.push(*element);
+              }
+
+              // Create a clone of shamir object
+              let shamir = self.shamirsecretobj.clone().unwrap();
+
+              return shamir.is_valid_share(share);
         }
 
+        false
     }
 
     pub fn write_password_data(&mut self, passwordfile: String) {
 
         // Borrow accountdict as its own variable binding
-        let accountdict = &self.accountdict.clone().unwrap();
+        let accountdict = self.accountdict.clone().unwrap();
 
         if self.threshold >= self.nextavailableshare {
-            panic!("Would write undecodable password file.   Must have more shares before writing.");
+            panic!("Would write undecodable password file. Must have more shares before writing.");
         }
 
         // Open file and store content from passwordfile
         let mut file = File::open(passwordfile.as_str()).unwrap();
 
+        // Convert accountdict to a string
         let raw_accountdict = serde_json::to_string::<AccountsWrapper>(&accountdict).unwrap();
 
+        // Write data to file
         let _ = file.write_all(raw_accountdict.as_bytes());
-
 
     }
 
-    pub fn unlock_password_data(&self, logindata: String) {
-         if self.knownsecret{
+    pub fn unlock_password_data(&mut self, logindata: Vec<(String, String)>) {
+
+        if self.knownsecret {
             panic!("Password File is already unlocked!");
-         }
+        }
 
-        let sharelist: Vec<u8> = vec![];
+        // Borrow accountdict as its own variable binding
+        let accountdict = self.accountdict.clone().unwrap();
 
+        let mut sharelist = vec![];
+
+        for (username, password) in logindata {
+
+            // Collect all usernames into a vector for comparison
+            let mut username_vec: Vec<String> = vec![];
+            for (_id, account) in accountdict.accounts.iter() {
+                username_vec.push(account.clone().username);
+            }
+
+            if !username_vec.contains(&username){
+                panic!("Unknown user {}", username);
+            }
+
+            for (_id, account) in accountdict.accounts.iter() {
+
+                if account.username == username {
+
+                    if account.sharenumber == 0 {
+                        continue;
+                    }
+
+                    // Concatenate the salt and the password
+                    let saltpass: String = format!("{}{}", account.salt, password);
+
+                    let thissaltedpasswordhash: [u8; 32] = sha256(&saltpass.as_bytes());
+
+                    let sharedata = do_bytearray_xor(thissaltedpasswordhash.to_vec(),
+                        account.clone().passhash.into_bytes()[0..(account.clone().passhash.len() - self.partialbytes.unwrap() as usize)].to_vec());
+
+                    let mut thisshare = vec![account.sharenumber];
+                    thisshare.extend(sharedata.iter().cloned());
+
+                    sharelist.push(thisshare);
+
+                }
+            }
+        }
+
+        self.shamirsecretobj.clone().unwrap().recover_secretdata(sharelist);
+
+        self.thresholdlesskey = Some(self.shamirsecretobj.clone().unwrap().secretdata.unwrap().into_bytes());
+
+        self.knownsecret = true;
     }
 
 }
 
+
+/* ==============================================
+   Helper Serialization/Deserialization mod for
+   JSON / HashMap conversions
+   ==============================================*/
+
+mod accounts {
+    use super::Accounts;
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+
+    pub fn serialize<S>(map: &HashMap<i64, Accounts>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.collect_seq(map.values())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<i64, Accounts>, D::Error>
+        where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for item in Vec::<Accounts>::deserialize(deserializer)? {
+            map.insert(item.id, item);
+        }
+        Ok(map)
+    }
+
+}
 
 
 /* ==============================================

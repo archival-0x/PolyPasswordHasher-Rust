@@ -1,11 +1,11 @@
 {
-    "accounts": [
-      {
-        "id": 1,
-        "username": "my_username",
-        "salt": "abcdefghijk...",
-        "sharenumber": "1",
-        "passhash": "abcdefghijk...",
-      }
-    ]
-  }
+  "accounts": [
+    {
+      "id": 1,
+      "username": "my_username",
+      "salt": "abcdefghijk1234567890",
+      "sharenumber": 1,
+      "passhash": "abcdefghijk1234567890"
+    }
+  ]
+}
