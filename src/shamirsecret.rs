@@ -10,65 +10,65 @@ use ring::rand::{SecureRandom, SystemRandom};
 #[cfg(test)]
 mod tests {
     use super::ShamirSecret;
-    
+
     #[test]
     fn test_full_lagrange(){
          assert_eq!(super::_full_lagrange(vec![2, 4, 5], vec![14, 30, 32]), vec![43, 168, 150]);
     }
-    
+
     #[test]
     fn test_generate_secret(){
         let message = String::from("Secret message");
         let _ = ShamirSecret::new(5, Some(message));
     }
-    
+
     #[test]
     fn test_recover_secret(){
         let secret = ShamirSecret::new(3, Some("Hello".to_string()));
-        
+
         // Calculate 3 new shares, since k = 3
         let a = secret.compute_share(1);
         let b = secret.compute_share(2);
         let c = secret.compute_share(3);
-        
+
         // Notice how first element is always x
         println!("A: {:?}\nB: {:?}\nC: {:?}", a, b, c);
-        
+
         // New ShamirSecret object with no secret.
         let mut newsecret = ShamirSecret::new(3, None);
-    
+
         // Recover with vector of 3 shares. This sets secret for new
         // ShamirSecret object
         let _ = newsecret.recover_secretdata(vec![a, b, c]);
-        
-        // Check!        
+
+        // Check!
         assert_eq!(newsecret.secretdata, secret.secretdata);
         println!("{:?} == {:?}", newsecret.secretdata, secret.secretdata);
-        
+
     }
-        
+
     #[test]
     fn test_valid_share(){
         let message = String::from("Secret message");
 
         let s = ShamirSecret::new(2, Some(message));
         let a = s.compute_share(1);
-                
+
         assert_eq!(s.is_valid_share(a), true);
-       
+
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ShamirSecret {
     // This is our threshold value: number of share needed to reconstruct polynomial
     // threshold - 1 = degree of polynomial.
     pub threshold: u8,
-    
+
     // We pass as Option monad to reinforce "optional" argument.
     // User can None to specify that no secret will be provided
     pub secretdata: Option<String>,
-    
+
     // We generate our own vector of coefficients with Rng
     // Will not be specified by the user, as this will be randomly generated
     pub coefficients: Vec<Vec<u8>>
@@ -82,35 +82,35 @@ impl ShamirSecret {
     // Generates a new ShamirSecret struct, with randomly generated coefficients
     // let sss: ShamirSecret = ShamirSecret::new(5, "Hello");
     pub fn new(threshold: u8, secretdata: Option<String>) -> ShamirSecret {
-        
+
         // If user specifies a secret, create a new empty vector
         // for coefficients
         let mut coefficients: Vec<Vec<u8>> = vec![];
-        
+
         if let Some(data) = secretdata {
             let ring_random = SystemRandom::new();
-            
+
             // Prepare for fill(), generating random data
             // Set an array for "dest"
             let mut rand_bytes = [0u8, threshold - 1];
-            
+
             // Secret-sharing will be applied for each byte of the secret
             for secretbyte in data.as_bytes(){
-                
+
                 // Call fill to fill rand_bytes with random data
                 let _ = ring_random.fill(&mut rand_bytes);
-                
+
                 // Add secretbyte to new mutable vector
                 let mut coefficient: Vec<u8> = vec![*secretbyte];
-                
+
                 // For each element in rand_byte, push it to the coefficient vector
                 for r in rand_bytes.iter(){
                     coefficient.push(*r);
                 }
-                
+
                 // This way, each individual byte will have a corresponding
                 // pseudorandom generated coefficient.
-                
+
                 // Add coefficient to the Vector
                 coefficients.push(coefficient);
             }
@@ -119,121 +119,121 @@ impl ShamirSecret {
                 threshold: threshold,
                 secretdata: Some(data.to_string()),
                 coefficients: coefficients,
-            }  
-            
-            //...otherwise  
+            }
+
+            //...otherwise
         } else {
             // Return new Shamir Secret struct with no secretdata
             ShamirSecret {
                 threshold: threshold,
                 secretdata: None,
                 coefficients: coefficients,
-            }  
+            }
         }
     }
-    
+
     pub fn is_valid_share(&self, share: Vec<u8>) -> bool {
         // TODO: Check arity
-        
+
         if self.coefficients.len() == 0 {
             panic!("Coefficients were not initialized!");
         }
-        
+
         // Assign x to first element of tuple, which is of type u8
         let x: u8 = share[0];
-        
+
         // Get x value, compute_share, and check if equates to specified tuple
         self.compute_share(x) == share
     }
 
     // Computes shares and returns a tuple representing (x, f(x))
     pub fn compute_share(&self, x: u8) -> Vec<u8> {
-        
+
         // Due to finite field, x cannot be smaller than 1 or greater than 256
         if x < 1  {
             panic!("Cannot be smaller than 1 or greater than 255");
         }
-        
+
         // Check if we have actually generated coefficients
         if self.coefficients.len() == 0 {
             panic!("Coefficients were not initialized!");
         }
-        
+
         let mut sharebytes: Vec<u8> = vec![];
-        
+
         // Due to ownership and borrowship, get a clone of coefficients vector
         let coefficients = self.coefficients.clone();
-        
+
         for coefficient in coefficients {
-            
+
             // Compute f(x) for each value
             let share = _f(x, coefficient);
-            
+
             sharebytes.push(share);
         }
-        
+
         // Insert the x value at beginning of the vector
         sharebytes.insert(0, x);
         sharebytes
     }
-    
+
     // Recover secretdata by passing vector with shares equal to threshold
-    
+
     pub fn recover_secretdata(&mut self, shares: Vec<Vec<u8>>) {
-        
+
         let mut newshares: Vec<Vec<u8>> = vec![];
-        
+
         // Discards multiple same shares
         for share in shares.iter() {
             if !newshares.contains(share) {
                 newshares.push(share.clone());
             }
         }
-        
+
         let shares = newshares.clone();
-        
+
         // Check if new shares are smaller than threshold size
         if self.threshold as usize > shares.len() {
             panic!("Threshold: {} is smaller than the number of shares: {}", self.threshold, shares.len());
         }
-        
+
         let mut xs: Vec<u8> = vec![];
-        
+
         for share in shares.iter() {
             if xs.contains(&share[0]) {
                panic!("Different shares with the same byte: {:?}", share[0]);
             }
-            
+
             if share.len() != shares[0].len() {
                 panic!("Shares have different lengths!");
             }
-            
+
             xs.push(share[0].clone());
         }
-        
+
         let mut mycoefficients: Vec<u8> = vec![];
         let mut mysecretdata: Vec<u8> = vec![];
-        
+
         let byte_walk = shares[0].len() - 1;
-        
+
         for byte_to_use in 0..byte_walk {
-            
+
             let mut fxs: Vec<u8> = vec![];
-            
+
             for share in shares.clone() {
                 fxs.push(share[1..][byte_to_use].clone());
             }
-            
+
             let result_polynomial = _full_lagrange(xs.clone(), fxs);
-            
-            
+
+
             for coefficient in result_polynomial[..].iter() {
                 mycoefficients.push(*coefficient);
             }
             mysecretdata.push(result_polynomial[0].clone());
-            
+
         }
-        
+
         // Set coefficients
         self.coefficients = vec!(mycoefficients);
         self.secretdata = Some(String::from_utf8_lossy(&mysecretdata).to_string());
@@ -298,45 +298,45 @@ fn _f(x: u8, coefficient_bytes: Vec<u8>) -> u8 {
     if x == 0 {
         panic!("x cannot be equal to 0");
     }
-    
+
     let mut accumulator = 0;
     let mut x_i = 1;
     for coefficient in coefficient_bytes {
         accumulator = _gf256_add(accumulator, _gf256_mul(coefficient, x_i));
         x_i = _gf256_mul(x_i, x);
     }
-    
+
     accumulator
 }
 
 fn _multiply_polynomials(a: Vec<u8>, b: Vec<u8>) -> Vec<u8>{
-    
+
     // Create a vector to store results after computation
     let mut resultterms: Vec<u8> = vec![];
-    
+
     let mut termpadding: Vec<u8> = vec![];
-    
+
     for bterm in b {
         let mut thisvalue = termpadding.clone();
-        
+
         for aterm in a.clone() {
             thisvalue.push(_gf256_mul(aterm, bterm));
         }
-        
+
         resultterms = _add_polynomials(resultterms, thisvalue);
-    
+
         termpadding.push(0);
     }
-    
+
     resultterms
 }
 
 fn _add_polynomials(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
     let mut a = a.clone();
     let mut b = b.clone();
-    
+
     let mut result: Vec<u8> = vec![];
-     
+
     if a.len() < b.len() {
         let mut c = vec![0; (b.len() - a.len())];
         a.append(&mut c);
@@ -344,13 +344,13 @@ fn _add_polynomials(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
         let mut c = vec![0; (a.len() - b.len())];
         b.append(&mut c);
     }
-    
+
     assert!(a.len() == b.len());
-    
+
     for position in 0..a.len() {
         result.push(_gf256_add(a[position], b[position]));
     }
-    
+
     result
 }
 
@@ -358,10 +358,10 @@ fn _add_polynomials(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
 pub fn _full_lagrange(xs: Vec<u8>, fxs: Vec<u8>) -> Vec<u8> {
     // Takes a vector of x's and vector of f(x)'s and computes
     // the coefficients, plus the constant (secret data)
-    
+
     // Makes sure that they are the same length!
     assert!(xs.len() == fxs.len());
-    
+
     let mut returnedcoefficients: Vec<u8> = vec![];
 
     // How to compute:
@@ -369,29 +369,29 @@ pub fn _full_lagrange(xs: Vec<u8>, fxs: Vec<u8>) -> Vec<u8> {
     //  l_1 =  (x - x_0) / (x_1 - x_0)   *   (x - x_2) / (x_1 - x_2) * ...
 
     for i in 0..fxs.len() {
-        
+
         // Set current polynomial to compute
         let mut this_polynomial: Vec<u8> = vec![1];
-        
+
         for j in 0..fxs.len() {
-            
+
             if i == j {
                 continue;
             }
-            
+
             let denominator = _gf256_sub(xs[i], xs[j]);
-        
+
             let this_term = [_gf256_div(xs[j], denominator), _gf256_div(1, denominator)];
-        
+
             this_polynomial = _multiply_polynomials(this_polynomial, this_term.to_vec());
         }
-        
+
         this_polynomial = _multiply_polynomials(this_polynomial, [fxs[i]].to_vec());
-        
+
         returnedcoefficients = _add_polynomials(returnedcoefficients, this_polynomial)
 
     }
-    
+
     returnedcoefficients
 }
 
@@ -414,11 +414,11 @@ fn _gf256_div(a: u8, b: u8) -> u8 {
     if a == 0 {
         return 0;
     }
-    
+
     if b == 0 {
         panic!("Zero division!");
     }
-    
+
     let a_log = _GF256_LOG[a as usize] as i16;
     let b_log = _GF256_LOG[b as usize] as i16;
 
@@ -427,6 +427,6 @@ fn _gf256_div(a: u8, b: u8) -> u8 {
     if diff < 0 {
         diff = 255 + diff;
     }
-    
+
     _GF256_EXP[(diff % 255) as usize]
 }
