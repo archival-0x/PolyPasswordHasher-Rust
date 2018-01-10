@@ -48,25 +48,27 @@ mod tests {
         };
 
         // TODO: serialize to json
+    }
+
+    #[test]
+    fn test_create_pph(){
+        let mut pph = PolyPasswordHasher::new(10, None, None);
+
+        pph.create_account(String::from("admin"), String::from("correct horse"), 5);
+        pph.create_account(String::from("root"), String::from("battery staple"), 5);
+        pph.create_account(String::from("superuser"), String::from("purple monkey dishwasher"), 5);
+
+        pph.create_account(String::from("alice"), String::from("kitten"), 1);
+        pph.create_account(String::from("bob"), String::from("puppy"), 1);
+        pph.create_account(String::from("charlie"), String::from("velociraptor"), 1);
+        pph.create_account(String::from("dennis"), String::from("menace"), 0);
+        pph.create_account(String::from("eve"), String::from("iamevil"), 0);
+
+
 
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AccountsWrapper {
-    #[serde(with = "accounts")]
-    pub accounts: HashMap<i64, Accounts>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Accounts {
-    // This is the HashMap key.
-    id: i64,
-    username: String,
-    salt: String,
-    sharenumber: u8,
-    passhash: String
-}
 
 pub struct PolyPasswordHasher {
 
@@ -112,7 +114,10 @@ pub struct PolyPasswordHasher {
 }
 
 impl PolyPasswordHasher {
+
+    // Create a new PolyPasswordHasher object with/without the option of providing a file
     pub fn new(threshold: u8, passwordfile: Option<String>, partialbytes: Option<u8>) -> PolyPasswordHasher {
+
         // Variable to hold ShamirSecret object
         let shamirsecretobj: ShamirSecret;
 
@@ -126,9 +131,11 @@ impl PolyPasswordHasher {
             let mut buffer = [0u8; 256];
             rand_bytes(&mut buffer).unwrap();
 
+
             let thresholdlesskey = unsafe {
                 String::from_utf8_unchecked(buffer.to_vec())
             };
+
             // Create new ShamirSecret object
             shamirsecretobj = ShamirSecret::new(threshold,
                 Some(thresholdlesskey.to_owned()));
@@ -368,6 +375,28 @@ impl PolyPasswordHasher {
 }
 
 
+
+/* ========================================================
+   Structs defined for JSON serialization/deserialization
+   ========================================================*/
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AccountsWrapper {
+    #[serde(with = "accounts")]
+    pub accounts: HashMap<i64, Accounts>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Accounts {
+    // This is the HashMap key.
+    id: i64,
+    username: String,
+    salt: String,
+    sharenumber: u8,
+    passhash: String
+}
+
 /* ==============================================
    Helper Serialization/Deserialization mod for
    JSON / HashMap conversions
@@ -406,7 +435,7 @@ mod accounts {
 
 fn do_bytearray_xor(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
     if a.len() != b.len() {
-        println!("{:?} {:?}, {:?} {:?}", a.len(), b.len(), a, b);
+        panic!("{:?} {:?}, {:?} {:?}", a.len(), b.len(), a, b);
     }
 
     let mut result = vec![];
