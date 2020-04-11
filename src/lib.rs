@@ -9,12 +9,11 @@ extern crate sodiumoxide;
 extern crate serde;
 extern crate serde_json;
 
-mod math;
+pub mod math;
+pub mod secretshare;
+pub mod account;
 
-mod secretshare;
 use secretshare::ShamirSecret;
-
-mod account;
 use account::{Accounts, AccountsWrapper};
 
 use sodiumoxide::crypto::hash::sha256;
