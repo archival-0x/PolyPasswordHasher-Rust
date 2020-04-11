@@ -1,45 +1,27 @@
-//!
 //! lib.rs
 //!
-//!     Defines main object for secret
-//!     sharing and authentication with
-//!     PPH.
+//!     Defines main object for secret sharing and
+//!     authentication with PolyPasswordHasher.
+
+extern crate random;
+extern crate sodiumoxide;
 
 extern crate serde;
 extern crate serde_json;
-extern crate openssl;
-extern crate ring;
 
-#[macro_use]
-extern crate serde_derive;
+mod math;
 
-mod shamirsecret;
-use shamirsecret::ShamirSecret;
+mod secretshare;
+use secretshare::ShamirSecret;
 
 mod account;
-use account::{AccountsWrapper, Accounts};
-use account::helpers;
+use account::{Accounts, AccountsWrapper};
 
-use openssl::rand::rand_bytes;
-use openssl::sha::sha256;
+use sodiumoxide::crypto::hash::sha256;
+use sodiumoxide::randombytes;
 
 use std::fs::File;
 use std::io::{Read, Write};
-use std::collections::HashMap;
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_create_pph(){
-        let mut pph = PolyPasswordHasher::new(2, None, None);
-        pph.create_account(String::from("admin"), String::from("correct horse"), 5);
-        pph.create_account(String::from("root"), String::from("battery staple"), 5);
-    }
-}
-
 
 /// defines the main PolyPasswordHasher object to work with
 pub struct PolyPasswordHasher {
@@ -50,24 +32,22 @@ pub struct PolyPasswordHasher {
     saltsize: u8,
     partialbytes: Option<u8>,
     thresholdlesskey: Option<Vec<u8>>,
-    nextavailableshare: u8
+    nextavailableshare: u8,
 }
 
-
 impl PolyPasswordHasher {
-
-    pub fn new(threshold: u8, passwordfile: Option<String>, partialbytes: Option<u8>) -> PolyPasswordHasher {
+    pub fn new(
+        threshold: u8,
+        passwordfile: Option<String>,
+        partialbytes: Option<u8>,
+    ) -> PolyPasswordHasher {
         let mut nextavailableshare: u8 = 1;
 
         // if no password file is defined, initialize empty object
         if let None = passwordfile {
-
             // initialize rand buffer
-            let mut buffer = [0u8; 256];
-            rand_bytes(&mut buffer).unwrap();
-            let thresholdlesskey = unsafe {
-                String::from_utf8_unchecked(buffer.to_vec())
-            };
+            let buffer = randombytes::randombytes(256);
+            let thresholdlesskey = unsafe { String::from_utf8_unchecked(buffer) };
 
             // Create new ShamirSecret object
             let shamirsecretobj = ShamirSecret::new(threshold, Some(thresholdlesskey.to_owned()));
@@ -81,7 +61,7 @@ impl PolyPasswordHasher {
                 saltsize: 16u8,
                 partialbytes: partialbytes,
                 thresholdlesskey: Some(thresholdlesskey.into_bytes()),
-                nextavailableshare: 1
+                nextavailableshare: 1,
             };
         }
 
@@ -111,13 +91,13 @@ impl PolyPasswordHasher {
             saltsize: 16u8,
             partialbytes: partialbytes,
             thresholdlesskey: None,
-            nextavailableshare: nextavailableshare
+            nextavailableshare: nextavailableshare,
         }
     }
 
-
     /// create a new user with credentials and number of shares to reconstruct pw
     pub fn create_account(&mut self, username: String, password: String, shares: u8) {
+        let mut accountdict = self.accountdict.clone().unwrap();
 
         // check if username already exists
         for (_, account) in accountdict.accounts.iter() {
@@ -126,28 +106,30 @@ impl PolyPasswordHasher {
             }
         }
 
-        // initialize copy of accountdict
-        let mut accountdict = self.accountdict.clone().unwrap();
         if self.knownsecret == false {
             panic!("password file is not unlocked");
         }
 
-
         for sharenumber in self.nextavailableshare..(self.nextavailableshare + shares) {
-
-            let shamirsecretdata = self.shamirsecretobj.clone().unwrap().compute_share(sharenumber);
+            let shamirsecretdata = self
+                .shamirsecretobj
+                .clone()
+                .unwrap()
+                .compute_share(sharenumber);
 
             // initialize rand buffer
-            let mut salt_buffer: Vec<u8> = vec![0u8; self.saltsize as usize];
-            rand_bytes(&mut salt_buffer).unwrap();
+            let salt_buffer: Vec<u8> = randombytes::randombytes(self.saltsize as usize);
 
             // initialize salted password hash
             let salt: String = String::from_utf8(salt_buffer).unwrap();
             let saltpass: String = format!("{}{}", salt, password);
-            let saltedpasswordhash: [u8; 32] = sha256(&saltpass.as_bytes());
+            let sha256::Digest(saltedpasswordhash) = sha256::hash(&saltpass.as_bytes());
 
-            let mut passhash: Vec<u8> = do_bytearray_xor(saltedpasswordhash.to_vec(), shamirsecretdata);
-            passhash.push(saltedpasswordhash[saltedpasswordhash.len() - self.partialbytes.unwrap() as usize]);
+            let mut passhash: Vec<u8> =
+                do_bytearray_xor(saltedpasswordhash.to_vec(), shamirsecretdata);
+            passhash.push(
+                saltedpasswordhash[saltedpasswordhash.len() - self.partialbytes.unwrap() as usize],
+            );
 
             // initialize new account entry and add to dict
             let new_account = Accounts {
@@ -155,7 +137,7 @@ impl PolyPasswordHasher {
                 username: username.clone(),
                 salt: salt,
                 sharenumber: sharenumber,
-                passhash: String::from_utf8(passhash).unwrap()
+                passhash: String::from_utf8(passhash).unwrap(),
             };
             accountdict.accounts.insert(new_account.id, new_account);
         }
@@ -163,7 +145,6 @@ impl PolyPasswordHasher {
         // Iterate nextavailableshare
         self.nextavailableshare += shares;
     }
-
 
     /// helper used to determine if a username/password can authenticate correctly
     pub fn is_valid_login(&self, username: String, password: String) -> bool {
@@ -184,35 +165,40 @@ impl PolyPasswordHasher {
             username_vec.push(account.clone().username);
         }
 
-        if !username_vec.contains(&username){
+        if !username_vec.contains(&username) {
             panic!("Unknown user {}", username);
         }
 
-        for (_id, account) in accountdict.accounts.iter(){
-             let saltpass: String = format!("{}{}", account.salt, password);
-             let saltedpasswordhash: [u8; 32] = sha256(&saltpass.as_bytes());
+        for (_id, account) in accountdict.accounts.iter() {
+            let saltpass: String = format!("{}{}", account.salt, password);
+            let sha256::Digest(saltedpasswordhash) = sha256::hash(&saltpass.as_bytes());
 
-             if !self.knownsecret {
-                 let saltedcheck = saltedpasswordhash[saltedpasswordhash.len() - (self.partialbytes.unwrap() as usize)];
-                 let entrycheck = account.clone().passhash.into_bytes()[account.clone().passhash.len()] - self.partialbytes.unwrap();
-                 return saltedcheck == entrycheck;
-             }
+            if !self.knownsecret {
+                let saltedcheck = saltedpasswordhash
+                    [saltedpasswordhash.len() - (self.partialbytes.unwrap() as usize)];
+                let entrycheck = account.clone().passhash.into_bytes()
+                    [account.clone().passhash.len()]
+                    - self.partialbytes.unwrap();
+                return saltedcheck == entrycheck;
+            }
 
+            let sharedata = do_bytearray_xor(
+                saltedpasswordhash.to_vec(),
+                account.clone().passhash.into_bytes()
+                    [0..(account.clone().passhash.len() - self.partialbytes.unwrap() as usize)]
+                    .to_vec(),
+            );
 
-             let sharedata = do_bytearray_xor(saltedpasswordhash.to_vec(),
-                 account.clone().passhash.into_bytes()[0..(account.clone().passhash.len() - self.partialbytes.unwrap() as usize)].to_vec());
-
-              // TODO : implement thresholdless account support
-              let mut share: Vec<u8> = vec![account.sharenumber];
-              for element in sharedata.iter() {
-                  share.push(*element);
-              }
-              let shamir = self.shamirsecretobj.clone().unwrap();
-              return shamir.is_valid_share(share);
+            // TODO : implement thresholdless account support
+            let mut share: Vec<u8> = vec![account.sharenumber];
+            for element in sharedata.iter() {
+                share.push(*element);
+            }
+            let shamir = self.shamirsecretobj.clone().unwrap();
+            return shamir.is_valid_share(share);
         }
         false
     }
-
 
     /// helper that writes accountdict to a file
     pub fn write_password_data(&mut self, passwordfile: String) {
@@ -228,7 +214,6 @@ impl PolyPasswordHasher {
         let _ = file.write_all(raw_accountdict.as_bytes());
     }
 
-
     pub fn unlock_password_data(&mut self, logindata: Vec<(String, String)>) {
         let accountdict = self.accountdict.clone().unwrap();
 
@@ -243,7 +228,7 @@ impl PolyPasswordHasher {
                 username_vec.push(account.clone().username);
             }
 
-            if !username_vec.contains(&username){
+            if !username_vec.contains(&username) {
                 panic!("Unknown user {}", username);
             }
 
@@ -255,9 +240,13 @@ impl PolyPasswordHasher {
 
                     // concat the salt and the password
                     let saltpass: String = format!("{}{}", account.salt, password);
-                    let thissaltedpasswordhash: [u8; 32] = sha256(&saltpass.as_bytes());
-                    let sharedata = do_bytearray_xor(thissaltedpasswordhash.to_vec(),
-                        account.clone().passhash.into_bytes()[0..(account.clone().passhash.len() - self.partialbytes.unwrap() as usize)].to_vec());
+                    let sha256::Digest(thissaltedpasswordhash) = sha256::hash(&saltpass.as_bytes());
+                    let sharedata = do_bytearray_xor(
+                        thissaltedpasswordhash.to_vec(),
+                        account.clone().passhash.into_bytes()[0..(account.clone().passhash.len()
+                            - self.partialbytes.unwrap() as usize)]
+                            .to_vec(),
+                    );
 
                     let mut thisshare = vec![account.sharenumber];
                     thisshare.extend(sharedata.iter().cloned());
@@ -265,13 +254,21 @@ impl PolyPasswordHasher {
                 }
             }
         }
-        self.shamirsecretobj.clone().unwrap().recover_secretdata(sharelist);
-        self.thresholdlesskey = Some(self.shamirsecretobj.clone().unwrap().secretdata.unwrap().into_bytes());
+        self.shamirsecretobj
+            .clone()
+            .unwrap()
+            .recover_secretdata(sharelist);
+        self.thresholdlesskey = Some(
+            self.shamirsecretobj
+                .clone()
+                .unwrap()
+                .secretdata
+                .unwrap()
+                .into_bytes(),
+        );
         self.knownsecret = true;
     }
 }
-
-
 
 #[inline]
 fn do_bytearray_xor(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {

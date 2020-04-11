@@ -1,11 +1,11 @@
 [package]
-name = "PolyPasswordHasher"
+name = "polypasswordhasher"
 version = "0.1.0"
 authors = ["ex0dus-0x <ex0dus@codemuch.tech>"]
 
 [dependencies]
-openssl = "0.9.23"
-ring = "0.12.1"
-serde = "1.0.25"
-serde_json = "1.0.8"
-serde_derive = "1.0.26"
+random = "0.12.2"
+sodiumoxide = "0.2.5"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
