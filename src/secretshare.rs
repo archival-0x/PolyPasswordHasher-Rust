@@ -10,20 +10,20 @@ use sodiumoxide::randombytes;
 #[derive(Debug, Clone)]
 pub struct ShamirSecret {
     pub threshold: u8,
-    pub secretdata: Option<String>,
+    pub secretdata: Option<Vec<u8>>,
     pub coefficients: Vec<Vec<u8>>,
 }
 
 impl ShamirSecret {
     /// generates a new ShamirSecret struct, with randomly generated coefficients
-    pub fn new(threshold: u8, secretdata: Option<String>) -> ShamirSecret {
+    pub fn new(threshold: u8, secretdata: Option<Vec<u8>>) -> ShamirSecret {
         let mut coefficients: Vec<Vec<u8>> = vec![];
 
         if let Some(data) = secretdata {
             let rand_bytes = randombytes::randombytes((threshold - 1) as usize);
 
             // Secret-sharing will be applied for each byte of the secret
-            for secretbyte in data.as_bytes() {
+            for secretbyte in &data {
                 let mut coefficient: Vec<u8> = vec![*secretbyte];
                 for r in rand_bytes.iter() {
                     coefficient.push(*r);
@@ -33,11 +33,12 @@ impl ShamirSecret {
 
             ShamirSecret {
                 threshold: threshold,
-                secretdata: Some(data.to_string()),
+                secretdata: Some(data),
                 coefficients: coefficients,
             }
+
+        // Return new Shamir Secret struct with no secretdata
         } else {
-            // Return new Shamir Secret struct with no secretdata
             ShamirSecret {
                 threshold: threshold,
                 secretdata: None,
@@ -124,6 +125,6 @@ impl ShamirSecret {
             mysecretdata.push(result_polynomial[0].clone());
         }
         self.coefficients = vec![mycoefficients];
-        self.secretdata = Some(String::from_utf8_lossy(&mysecretdata).to_string());
+        self.secretdata = Some(mysecretdata.to_vec())
     }
 }

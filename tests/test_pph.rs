@@ -5,7 +5,6 @@
 
 extern crate polypasswordhasher;
 
-
 #[cfg(test)]
 mod tests {
 

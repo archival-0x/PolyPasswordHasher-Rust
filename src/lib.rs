@@ -3,18 +3,17 @@
 //!     Defines main object for secret sharing and
 //!     authentication with PolyPasswordHasher.
 
-extern crate random;
 extern crate sodiumoxide;
 
 extern crate serde;
 extern crate serde_json;
 
+pub mod account;
 pub mod math;
 pub mod secretshare;
-pub mod account;
 
-use secretshare::ShamirSecret;
-use account::{Accounts, AccountsWrapper};
+use self::account::{Accounts, AccountsWrapper};
+use self::secretshare::ShamirSecret;
 
 use sodiumoxide::crypto::hash::sha256;
 use sodiumoxide::randombytes;
@@ -22,7 +21,9 @@ use sodiumoxide::randombytes;
 use std::fs::File;
 use std::io::{Read, Write};
 
-/// defines the main PolyPasswordHasher object to work with
+/// `PolyPasswordHasher` defines the main struct interface that
+/// provides the high-level abstractions for interacting with the
+/// implementation to create password DBs.
 pub struct PolyPasswordHasher {
     threshold: u8,
     accountdict: Option<AccountsWrapper>,
@@ -35,6 +36,7 @@ pub struct PolyPasswordHasher {
 }
 
 impl PolyPasswordHasher {
+    /// `new()` initializes a new PolyPasswordHasher struct.
     pub fn new(
         threshold: u8,
         passwordfile: Option<String>,
@@ -42,16 +44,15 @@ impl PolyPasswordHasher {
     ) -> PolyPasswordHasher {
         let mut nextavailableshare: u8 = 1;
 
-        // if no password file is defined, initialize empty object
+        // if no password file is defined, initialize empty object with a randomized password key
         if let None = passwordfile {
             // initialize rand buffer
             let buffer = randombytes::randombytes(256);
-            let thresholdlesskey = unsafe { String::from_utf8_unchecked(buffer) };
 
             // Create new ShamirSecret object
-            let shamirsecretobj = ShamirSecret::new(threshold, Some(thresholdlesskey.to_owned()));
+            let shamirsecretobj = ShamirSecret::new(threshold, Some(buffer.clone()));
 
-            // Return the new struct
+            // Return the new struct with parameters
             return PolyPasswordHasher {
                 threshold: threshold,
                 accountdict: None,
@@ -59,7 +60,7 @@ impl PolyPasswordHasher {
                 knownsecret: true,
                 saltsize: 16u8,
                 partialbytes: partialbytes,
-                thresholdlesskey: Some(thresholdlesskey.into_bytes()),
+                thresholdlesskey: Some(buffer.clone()),
                 nextavailableshare: 1,
             };
         }
@@ -95,7 +96,7 @@ impl PolyPasswordHasher {
     }
 
     /// create a new user with credentials and number of shares to reconstruct pw
-    pub fn create_account(&mut self, username: String, password: String, shares: u8) {
+    pub fn create_account(&mut self, username: String, password: String, shares: u8) -> () {
         let mut accountdict = self.accountdict.clone().unwrap();
 
         // check if username already exists
@@ -257,14 +258,7 @@ impl PolyPasswordHasher {
             .clone()
             .unwrap()
             .recover_secretdata(sharelist);
-        self.thresholdlesskey = Some(
-            self.shamirsecretobj
-                .clone()
-                .unwrap()
-                .secretdata
-                .unwrap()
-                .into_bytes(),
-        );
+        self.thresholdlesskey = Some(self.shamirsecretobj.clone().unwrap().secretdata.unwrap());
         self.knownsecret = true;
     }
 }
