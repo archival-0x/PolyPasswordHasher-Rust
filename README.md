@@ -12,7 +12,7 @@ To learn more, check out the original [publication](https://password-hashing.net
 
 > TODO: API-specific design specs
 
-## usage 
+## usage
 
 To build and install locally:
 

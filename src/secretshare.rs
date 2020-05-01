@@ -3,10 +3,14 @@
 //!     Implementation of threshold secret sharing
 //!     scheme with Lagrange polynomial interpolation.
 
-use math::polynomial;
-
 use sodiumoxide::randombytes;
 
+use crate::math::polynomial;
+
+
+/// `ShamirSecret` is a wrapper struct over parameters
+/// necessary in order to perform secret-sharing and
+/// polynomial interpolation.
 #[derive(Debug, Clone)]
 pub struct ShamirSecret {
     pub threshold: u8,
@@ -15,11 +19,17 @@ pub struct ShamirSecret {
 }
 
 impl ShamirSecret {
-    /// generates a new ShamirSecret struct, with randomly generated coefficients
+
+    /// `new()` generates a new ShamirSecret struct, with randomly generated coefficients. It
+    /// consumes a threshold, and an optional input buffer
     pub fn new(threshold: u8, secretdata: Option<Vec<u8>>) -> ShamirSecret {
+
+        // initialize struct to hold raw coefficients
         let mut coefficients: Vec<Vec<u8>> = vec![];
 
         if let Some(data) = secretdata {
+
+            // initialize random bytes from threshold size
             let rand_bytes = randombytes::randombytes((threshold - 1) as usize);
 
             // Secret-sharing will be applied for each byte of the secret
@@ -31,23 +41,22 @@ impl ShamirSecret {
                 coefficients.push(coefficient);
             }
 
-            ShamirSecret {
+            return ShamirSecret {
                 threshold: threshold,
                 secretdata: Some(data),
                 coefficients: coefficients,
-            }
+            };
 
-        // Return new Shamir Secret struct with no secretdata
+        // return new ShamirSecret with no secretdata, if no secret was specified
         } else {
-            ShamirSecret {
+            return ShamirSecret {
                 threshold: threshold,
                 secretdata: None,
                 coefficients: coefficients,
-            }
+            };
         }
     }
 
-    // TODO: check arity of share vec
     pub fn is_valid_share(&self, share: Vec<u8>) -> bool {
         if self.coefficients.len() == 0 {
             panic!("Coefficients were not initialized!");

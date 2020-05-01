@@ -4,41 +4,24 @@
 //! 	interaction with PPH db. Support deserialization into
 //!		an encapsulated wrapper HashMap.
 
-//use serde::ser::Serializer;
-//use serde::de::Deserializer;
-use serde::{Deserialize, Serialize};
-
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+use serde::{Deserialize, Serialize};
+
+/// `AccountsWrapper` represents a serializable struct
+/// for a database configuration with secret shares. It is represented
+/// by a mapping between an index and an `Account`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountsWrapper {
-    pub accounts: HashMap<i64, Accounts>,
+    pub accounts: HashMap<i64, Account>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Accounts {
+/// `Account` represents an account that can be committed to the database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Account {
     pub id: i64,
     pub username: String,
     pub salt: String,
     pub sharenumber: u8,
     pub passhash: String,
 }
-
-/*
-pub fn serialize<S>(map: &HashMap<i64, Accounts>, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
-{
-    serializer.collect_seq(map.values())
-}
-
-
-pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<i64, Accounts>, D::Error>
-    where D: Deserializer<'de>
-{
-    let mut map = HashMap::new();
-    for item in Vec::<Accounts>::deserialize(deserializer)? {
-        map.insert(item.id, item);
-    }
-    Ok(map)
-}
-*/
