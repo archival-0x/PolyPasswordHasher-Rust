@@ -1,12 +1,8 @@
-//! shamirsecret.rs
-//!
-//!     Implementation of threshold secret sharing
-//!     scheme with Lagrange polynomial interpolation.
+//! Implementation of threshold secret sharing scheme with Lagrange polynomial interpolation.
 
 use sodiumoxide::randombytes;
 
 use crate::math::polynomial;
-
 
 /// `ShamirSecret` is a wrapper struct over parameters
 /// necessary in order to perform secret-sharing and
@@ -19,16 +15,13 @@ pub struct ShamirSecret {
 }
 
 impl ShamirSecret {
-
     /// `new()` generates a new ShamirSecret struct, with randomly generated coefficients. It
     /// consumes a threshold, and an optional input buffer
     pub fn new(threshold: u8, secretdata: Option<Vec<u8>>) -> ShamirSecret {
-
         // initialize struct to hold raw coefficients
         let mut coefficients: Vec<Vec<u8>> = vec![];
 
         if let Some(data) = secretdata {
-
             // initialize random bytes from threshold size
             let rand_bytes = randombytes::randombytes((threshold - 1) as usize);
 

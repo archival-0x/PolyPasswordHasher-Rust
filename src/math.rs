@@ -1,7 +1,5 @@
-//! math.rs
-//!
-//!     Define helpers functions and lookup tables for computing arithmetic
-//!     over finite fields and polynomial interpolation.
+//! Define helpers functions and lookup tables for computing arithmetic
+//! over finite fields and polynomial interpolation.
 
 mod galois {
 
