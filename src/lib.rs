@@ -14,7 +14,7 @@ use crate::secretshare::ShamirSecret;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 
 // type alias to `Account`s mapping with an ID value
 type Accounts = HashMap<i64, Account>;
@@ -31,9 +31,10 @@ pub struct PolyPasswordHasher {
 }
 
 impl PolyPasswordHasher {
-    /// `new()` initializes a new PolyPasswordHasher struct. It consumes a threshold number of
-    /// keys, an optional password file, and ...
-    pub fn new(threshold: u8, passwordfile: Option<String>) -> io::Result<PolyPasswordHasher> {
+    /// instantiates a new PolyPasswordHasher struct for interaction. It consumes a threshold number of
+    /// keys, and an optional pre-existing password file. If no file is specified, a new instance
+    /// will be created for use.
+    pub fn new(threshold: u8, passwordfile: Option<String>) -> PPHResult<Self> {
         let mut nextavailableshare: u8 = 1;
 
         // if no password file is defined, initialize empty object with a randomized password key,
@@ -63,7 +64,7 @@ impl PolyPasswordHasher {
         file.read_to_string(&mut raw_content)?;
 
         // Use serde to deserialize data from file
-        let accounts: Accounts = serde_json::from_str::<Accounts>(&raw_content).unwrap();
+        let accounts: Accounts = serde_json::from_str::<Accounts>(&raw_content)?;
 
         // Grab the id, and the Account struct for each account within the HashMap
         for (_id, account) in accounts.iter() {
@@ -72,7 +73,7 @@ impl PolyPasswordHasher {
 
         nextavailableshare += 1;
 
-        Ok(PolyPasswordHasher {
+        Ok(Self {
             threshold,
             accounts,
             shamirsecretobj: Some(shamirsecretobj),

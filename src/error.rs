@@ -11,14 +11,15 @@ pub type PPHResult<R> = Result<R, PPHError>;
 pub enum PPHErrorKind {
     ShardError,
     AuthError,
-    FileError
+    FileError,
+    SerError
 }
 
 /// the main error struct that encapsulates an error kind and a message
 #[derive(Debug)]
 pub struct PPHError {
-    pub msg: String,
-    pub kind: PPHErrorKind
+    pub kind: PPHErrorKind,
+    pub msg: String
 }
 
 impl fmt::Display for PPHError {
@@ -31,6 +32,15 @@ impl From<std::io::Error> for PPHError {
     fn from(error: std::io::Error) -> Self {
         PPHError {
             kind: PPHErrorKind::FileError,
+            msg: error.to_string()
+        }
+    }
+}
+
+impl From<serde_json::Error> for PPHError {
+    fn from(error: serde_json::Error) -> Self {
+        PPHError {
+            kind: PPHErrorKind::SerError,
             msg: error.to_string()
         }
     }
