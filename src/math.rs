@@ -1,8 +1,8 @@
 //! Define helpers functions and lookup tables for computing arithmetic
 //! over finite fields and polynomial interpolation.
 
-mod galois {
 
+mod galois {
     static GF256_EXP: [u8; 256] = [
         0x01, 0x03, 0x05, 0x0f, 0x11, 0x33, 0x55, 0xff, 0x1a, 0x2e, 0x72, 0x96, 0xa1, 0xf8, 0x13,
         0x35, 0x5f, 0xe1, 0x38, 0x48, 0xd8, 0x73, 0x95, 0xa4, 0xf7, 0x02, 0x06, 0x0a, 0x1e, 0x22,
@@ -74,7 +74,7 @@ mod galois {
 
         let mut diff = a_log - b_log;
         if diff < 0 {
-            diff = 255 + diff;
+            diff += 256;
         }
         GF256_EXP[(diff % 255) as usize]
     }
@@ -82,7 +82,8 @@ mod galois {
 
 pub mod polynomial {
 
-    use super::galois::*;
+    use std::cmp::Ordering;
+    use super::galois;
 
     pub fn compute_polynomial(x: u8, coefficient_bytes: Vec<u8>) -> u8 {
         if x == 0 {
@@ -93,8 +94,8 @@ pub mod polynomial {
         let mut x_i = 1;
 
         for coefficient in coefficient_bytes {
-            accumulator = gf256_add(accumulator, gf256_mul(coefficient, x_i));
-            x_i = gf256_mul(x_i, x);
+            accumulator = galois::gf256_add(accumulator, galois::gf256_mul(coefficient, x_i));
+            x_i = galois::gf256_mul(x_i, x);
         }
         accumulator
     }
@@ -107,7 +108,7 @@ pub mod polynomial {
         for bterm in b {
             let mut thisvalue = termpadding.clone();
             for aterm in a.clone() {
-                thisvalue.push(gf256_mul(aterm, bterm));
+                thisvalue.push(galois::gf256_mul(aterm, bterm));
             }
             resultterms = add_polynomials(resultterms, thisvalue);
             termpadding.push(0);
@@ -115,24 +116,26 @@ pub mod polynomial {
         resultterms
     }
 
-    fn add_polynomials(a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
-        let mut a = a.clone();
-        let mut b = b.clone();
-
+    fn add_polynomials(mut a: Vec<u8>, mut b: Vec<u8>) -> Vec<u8> {
         let mut result: Vec<u8> = vec![];
 
-        if a.len() < b.len() {
-            let mut c = vec![0; b.len() - a.len()];
-            a.append(&mut c);
-        } else if a.len() > b.len() {
-            let mut c = vec![0; a.len() - b.len()];
-            b.append(&mut c);
+        match a.len().cmp(&b.len()) {
+            Ordering::Less => {
+                let mut c = vec![0; b.len() - a.len()];
+                a.append(&mut c);
+            },
+            Ordering::Greater => {
+                let mut c = vec![0; a.len() - b.len()];
+                b.append(&mut c);
+            },
+            Ordering::Equal => {},
         }
 
+        // TODO: error
         assert!(a.len() == b.len());
 
         for position in 0..a.len() {
-            result.push(gf256_add(a[position], b[position]));
+            result.push(galois::gf256_add(a[position], b[position]));
         }
         result
     }
@@ -158,8 +161,8 @@ pub mod polynomial {
                     continue;
                 }
 
-                let denominator = gf256_sub(xs[i], xs[j]);
-                let this_term = [gf256_div(xs[j], denominator), gf256_div(1, denominator)];
+                let denominator = galois::gf256_sub(xs[i], xs[j]);
+                let this_term = [galois::gf256_div(xs[j], denominator), galois::gf256_div(1, denominator)];
 
                 this_polynomial = multiply_polynomials(this_polynomial, this_term.to_vec());
             }

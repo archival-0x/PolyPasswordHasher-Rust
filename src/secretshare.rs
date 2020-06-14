@@ -21,7 +21,7 @@ impl ShamirSecret {
         // initialize struct to hold raw coefficients
         let mut coefficients: Vec<Vec<u8>> = vec![];
 
-        if let Some(data) = secretdata {
+        if let Some(data) = secretdata.clone() {
             // initialize random bytes from threshold size
             let rand_bytes = randombytes::randombytes((threshold - 1) as usize);
 
@@ -33,25 +33,17 @@ impl ShamirSecret {
                 }
                 coefficients.push(coefficient);
             }
+        }
 
-            return ShamirSecret {
-                threshold: threshold,
-                secretdata: Some(data),
-                coefficients: coefficients,
-            };
-
-        // return new ShamirSecret with no secretdata, if no secret was specified
-        } else {
-            return ShamirSecret {
-                threshold: threshold,
-                secretdata: None,
-                coefficients: coefficients,
-            };
+        ShamirSecret {
+            threshold,
+            secretdata,
+            coefficients
         }
     }
 
     pub fn is_valid_share(&self, share: Vec<u8>) -> bool {
-        if self.coefficients.len() == 0 {
+        if self.coefficients.is_empty() {
             panic!("Coefficients were not initialized!");
         }
 
@@ -64,7 +56,7 @@ impl ShamirSecret {
         if x < 1 {
             panic!("Cannot be smaller than 1 or greater than 255");
         }
-        if self.coefficients.len() == 0 {
+        if self.coefficients.is_empty() {
             panic!("Coefficients were not initialized!");
         }
 
@@ -89,7 +81,6 @@ impl ShamirSecret {
             }
         }
 
-        let shares = newshares.clone();
         if self.threshold as usize > shares.len() {
             panic!(
                 "Threshold: {} is smaller than the number of shares: {}",

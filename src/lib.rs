@@ -13,8 +13,8 @@ use crate::error::{PPHError, PPHErrorKind, PPHResult};
 use crate::secretshare::ShamirSecret;
 
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Write};
+use std::fs::{self, File};
+use std::io::Write;
 
 // type alias to `Account`s mapping with an ID value
 type Accounts = HashMap<i64, Account>;
@@ -39,15 +39,15 @@ impl PolyPasswordHasher {
 
         // if no password file is defined, initialize empty object with a randomized password key,
         // indicating a first-time setup.
-        if let None = passwordfile {
+        if passwordfile.is_none() {
             // initialize rand buffer
             let buffer = randombytes::randombytes(256);
 
             // creates a new shamir secret given a threshold and random buffer
-            let shamirsecretobj = ShamirSecret::new(threshold, Some(buffer.clone()));
+            let shamirsecretobj = ShamirSecret::new(threshold, Some(buffer));
 
             return Ok(PolyPasswordHasher {
-                threshold: threshold,
+                threshold,
                 accounts: Accounts::new(),
                 shamirsecretobj: Some(shamirsecretobj),
                 knownsecret: true,
@@ -59,9 +59,7 @@ impl PolyPasswordHasher {
         let shamirsecretobj = ShamirSecret::new(threshold, None);
 
         // Open file and store content from passwordfile
-        let mut file = File::open(passwordfile.unwrap())?;
-        let mut raw_content = String::new();
-        file.read_to_string(&mut raw_content)?;
+        let raw_content = fs::read_to_string(passwordfile.unwrap())?;
 
         // Use serde to deserialize data from file
         let accounts: Accounts = serde_json::from_str::<Accounts>(&raw_content)?;
@@ -144,8 +142,8 @@ impl PolyPasswordHasher {
             let new_account = Account {
                 id: 0, // TODO: change!
                 username: username.clone(),
-                salt: salt,
-                sharenumber: sharenumber,
+                salt,
+                sharenumber,
                 passhash: String::from_utf8(passhash).unwrap(),
             };
             self.accounts.insert(new_account.id, new_account);
@@ -201,7 +199,9 @@ impl PolyPasswordHasher {
                 share.push(*element);
             }
             let shamir = self.shamirsecretobj.clone().unwrap();
-            return Ok(shamir.is_valid_share(share));
+            if shamir.is_valid_share(share) {
+                return Ok(true);
+            }
         }
         Ok(false)
     }
